@@ -7,6 +7,7 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 LIB_DIR="${ROOT_DIR}/lib"
 
 BUILD_ROOT="${BUILD_ROOT:-/var/lib/pve-custom-boot-logo/build}"
+EDK2_WORK_DIR="${BUILD_ROOT}/edk2-work"
 PVE_FIRMWARE_DIR="/usr/share/pve-edk2-firmware"
 BACKUP_DIR="/var/lib/pve-custom-boot-logo/backups"
 GIT_URL="git://git.proxmox.com/git/pve-edk2-firmware.git"
@@ -97,7 +98,7 @@ install_build_deps() {
     # - no qemu-utils (conflicts with pve-qemu-kvm; qemu-img already provided)
     # - no python3-virt-firmware (only needed for VARS enrollment, which we skip)
     local packages=(
-        git build-essential bc debhelper dosfstools
+        git build-essential bc debhelper dpkg-dev dosfstools
         acpica-tools nasm uuid-dev mtools xorriso
         python3 python3-pexpect python3-pil
         gcc-i686-linux-gnu
@@ -127,23 +128,38 @@ setup_edk2_toolchain() {
     # Ia32X64 firmware needs a 32-bit compiler on amd64 hosts.
     export EDK2_TOOLCHAIN="${EDK2_TOOLCHAIN:-GCC5}"
     export GCC5_IA32_PREFIX="${GCC5_IA32_PREFIX:-i686-linux-gnu-}"
+    export DEB_BUILD_ARCH="${DEB_BUILD_ARCH:-amd64}"
+    export DEB_HOST_ARCH="${DEB_HOST_ARCH:-amd64}"
     log "Using IA32 cross prefix: ${GCC5_IA32_PREFIX}"
 }
 
-build_ovmf_code_only() {
+prepare_edk2_worktree() {
     local repo="${BUILD_ROOT}/pve-edk2-firmware"
-    cd "${repo}"
-    setup_edk2_toolchain
+    local logo_bmp="$1"
 
-    log "Building OVMF CODE images only (skipping VARS enrollment)..."
-    make debian/setup-build-stamp
-    make -j"$(nproc)" \
+    [[ -f "${repo}/edk2/edksetup.sh" ]] || die "edk2 submodule missing. Run: git submodule update --init --recursive"
+
+    log "Preparing edk2 build tree at ${EDK2_WORK_DIR}..."
+    rm -rf "${EDK2_WORK_DIR}"
+    cp -a "${repo}/edk2/." "${EDK2_WORK_DIR}/"
+    cp -a "${repo}/debian" "${EDK2_WORK_DIR}/debian"
+    cp "${logo_bmp}" "${EDK2_WORK_DIR}/debian/Logo.bmp"
+}
+
+build_ovmf_code_only() {
+    setup_edk2_toolchain
+    cd "${EDK2_WORK_DIR}"
+
+    # Targets live in debian/rules, not the top-level Makefile (which only builds .deb).
+    log "Building OVMF CODE images (make -f debian/rules)..."
+    make -f debian/rules debian/setup-build-stamp
+    make -f debian/rules -j"$(nproc)" \
         debian/ovmf-install/OVMF_CODE_4M.fd \
         debian/ovmf-install/OVMF_CODE_4M.secboot.fd
 }
 
 install_built_code_images() {
-    local install_dir="${BUILD_ROOT}/pve-edk2-firmware/debian/ovmf-install"
+    local install_dir="${EDK2_WORK_DIR}/debian/ovmf-install"
     [[ -d "${install_dir}" ]] || die "Build output not found: ${install_dir}"
 
     mkdir -p "${BACKUP_DIR}" "${PVE_FIRMWARE_DIR}"
@@ -216,6 +232,7 @@ main() {
 
     cp "${logo_bmp}" "${BUILD_ROOT}/pve-edk2-firmware/debian/Logo.bmp"
     log "Installed logo at debian/Logo.bmp"
+    prepare_edk2_worktree "${logo_bmp}"
 
     if [[ "${OVMF_ONLY}" == "1" ]]; then
         build_ovmf_code_only
@@ -223,6 +240,7 @@ main() {
     else
         log "Building full pve-edk2-firmware package (OVMF_ONLY=0)..."
         setup_edk2_toolchain
+        cd "${BUILD_ROOT}/pve-edk2-firmware"
         make clean 2>/dev/null || true
         make -j"$(nproc)"
         make deb
