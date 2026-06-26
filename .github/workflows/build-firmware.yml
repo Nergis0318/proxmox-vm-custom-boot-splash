@@ -7,12 +7,12 @@ name: Build firmware
 on:
   push:
     branches: [master]
-    tags: ['v*']
+    tags: ["v*"]
   workflow_dispatch:
     inputs:
       logo:
-        description: 'Path to the logo image in the repo'
-        default: 'assets/logo.png'
+        description: "Path to the logo image in the repo"
+        default: "assets/logo.png"
         required: false
 
 concurrency:
@@ -74,8 +74,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
-      contents: write   # create the GitHub Release on tags
-      packages: read    # pull the build-env image
+      contents: write # create the GitHub Release on tags
+      packages: read # pull the build-env image
     container:
       image: ${{ needs.image.outputs.name }}@${{ needs.image.outputs.digest }}
       credentials:
@@ -96,17 +96,17 @@ jobs:
       # On a hit, build-firmware.sh sees the existing .git and skips the clone,
       # the fetch/pull, and the submodule download entirely.
       - name: Cache pve-edk2-firmware source + submodules
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ${{ github.workspace }}/_build/pve-edk2-firmware
           key: pve-edk2-fw-${{ steps.ck.outputs.week }}
 
       - name: Build OVMF CODE images with custom logo
         env:
-          SKIP_DEPS: '1'      # deps are baked into the build-env image
-          OVMF_ONLY: '1'      # x64 OVMF_CODE_4M(.secboot).fd only
+          SKIP_DEPS: "1" # deps are baked into the build-env image
+          OVMF_ONLY: "1" # x64 OVMF_CODE_4M(.secboot).fd only
           GIT_URL: https://git.proxmox.com/git/pve-edk2-firmware.git
-          GIT_DEPTH: '1'      # shallow clone repo + submodules (much faster)
+          GIT_DEPTH: "1" # shallow clone repo + submodules (much faster)
           BUILD_ROOT: ${{ github.workspace }}/_build
         run: bash scripts/build-firmware.sh "$LOGO"
 

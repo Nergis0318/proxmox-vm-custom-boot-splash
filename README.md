@@ -163,10 +163,10 @@ sudo ./scripts/apply-custom-boot-logo.sh ./logo.png --build
 
 **절대 설치하면 안 되는 패키지 (라이브 Proxmox 노드):**
 
-| 패키지 | 이유 |
-|--------|------|
-| `gcc-multilib` | `proxmox-ve`, `pve-qemu-kvm` 제거 유발 |
-| `qemu-utils` | `pve-qemu-kvm` 과 충돌 (`qemu-img`는 이미 설치됨) |
+| 패키지         | 이유                                              |
+| -------------- | ------------------------------------------------- |
+| `gcc-multilib` | `proxmox-ve`, `pve-qemu-kvm` 제거 유발            |
+| `qemu-utils`   | `pve-qemu-kvm` 과 충돌 (`qemu-img`는 이미 설치됨) |
 
 최신 스크립트는 대신 `gcc-i686-linux-gnu`(32비트 크로스 컴파일러)를 사용하고, `apt` 설치 전 Proxmox 패키지 제거 여부를 검사합니다.
 
@@ -259,11 +259,11 @@ ls _build/edk2-work/debian/ovmf-install/OVMF_CODE_4M*.fd
 
 ### 2) GitHub Actions (`.github/workflows/build-firmware.yml`)
 
-| 트리거 | 동작 |
-| --- | --- |
-| `master` 푸시 | 빌드 환경 이미지를 **GHCR**(`ghcr.io/<owner>/<repo>/build-env`)에 푸시 → 컨테이너에서 OVMF 빌드 → 아티팩트 업로드 |
-| `v*` 태그 푸시 | 위 + `.fd` 파일을 **GitHub Release** 자산으로 첨부 |
-| 수동 실행 | `workflow_dispatch` 입력으로 다른 로고 경로 지정 가능 |
+| 트리거         | 동작                                                                                                              |
+| -------------- | ----------------------------------------------------------------------------------------------------------------- |
+| `master` 푸시  | 빌드 환경 이미지를 **GHCR**(`ghcr.io/<owner>/<repo>/build-env`)에 푸시 → 컨테이너에서 OVMF 빌드 → 아티팩트 업로드 |
+| `v*` 태그 푸시 | 위 + `.fd` 파일을 **GitHub Release** 자산으로 첨부                                                                |
+| 수동 실행      | `workflow_dispatch` 입력으로 다른 로고 경로 지정 가능                                                             |
 
 릴리스 생성 예시:
 
