@@ -192,6 +192,12 @@ git submodule update --init --recursive
 
 ```
 proxmox-vm-custom-boot-splash/
+├── .github/workflows/
+│   └── build-firmware.yml          # GHCR 이미지 빌드 + OVMF 빌드 + Release
+├── docker/
+│   └── Dockerfile                  # Debian 13(PVE9) 빌드 환경 이미지
+├── assets/
+│   └── logo.png                    # CI가 사용하는 로고 (교체하세요)
 ├── scripts/
 │   ├── apply-custom-boot-logo.sh   # 메인 진입점
 │   ├── build-firmware.sh           # pve-edk2-firmware 소스 빌드
@@ -219,6 +225,53 @@ python3 lib/patch_firmware.py extract \
 # 단위 테스트
 python3 tests/test_patch_firmware.py -v
 ```
+
+## Docker 빌드 / GitHub Actions
+
+라이브 Proxmox 노드에서 직접 빌드하는 대신, **깨끗한 Debian 13(Proxmox VE 9 베이스) 컨테이너**에서 OVMF 이미지를 빌드할 수 있습니다. 호스트의 `proxmox-ve`/`pve-qemu-kvm` 패키지를 건드리지 않으므로 안전합니다.
+
+> 빌드 결과물(`OVMF_CODE_4M.fd`)은 **호스트의 Debian/Proxmox 버전과 맞아야** 합니다. 이 파이프라인은 PVE 9(Debian 13 "trixie") 기준입니다.
+
+### 로고 준비
+
+CI는 `assets/logo.png` 를 사용합니다. 기본값은 플레이스홀더이므로 **자신의 로고로 교체**하세요 (PNG/JPG/BMP, 권장 가로 200~400px).
+
+### 1) 로컬 Docker 빌드
+
+```bash
+# 빌드 환경 이미지 빌드
+docker build -t pve-ovmf-build-env ./docker
+
+# 리포를 마운트해 OVMF CODE 이미지 빌드
+docker run --rm -v "$PWD:/workspace" \
+  -e SKIP_DEPS=1 \
+  -e GIT_URL=https://git.proxmox.com/git/pve-edk2-firmware.git \
+  -e BUILD_ROOT=/workspace/_build \
+  pve-ovmf-build-env \
+  bash scripts/build-firmware.sh assets/logo.png
+
+# 결과물
+ls _build/edk2-work/debian/ovmf-install/OVMF_CODE_4M*.fd
+```
+
+생성된 `.fd` 파일을 Proxmox 호스트의 `/usr/share/pve-edk2-firmware/` 로 복사한 뒤 VM을 중지→시작하면 새 로고가 적용됩니다. (먼저 원본 백업 권장)
+
+### 2) GitHub Actions (`.github/workflows/build-firmware.yml`)
+
+| 트리거 | 동작 |
+| --- | --- |
+| `master` 푸시 | 빌드 환경 이미지를 **GHCR**(`ghcr.io/<owner>/<repo>/build-env`)에 푸시 → 컨테이너에서 OVMF 빌드 → 아티팩트 업로드 |
+| `v*` 태그 푸시 | 위 + `.fd` 파일을 **GitHub Release** 자산으로 첨부 |
+| 수동 실행 | `workflow_dispatch` 입력으로 다른 로고 경로 지정 가능 |
+
+릴리스 생성 예시:
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0   # Release 에 OVMF_CODE_4M.fd / .secboot.fd / SHA256SUMS 첨부
+```
+
+> 빌드 환경 이미지가 GHCR에 푸시되므로(빌드 의존성 캐시), 이후 빌드는 더 빨라집니다. `git://` 대신 `https://` 로 클론하도록 `GIT_URL` 을 오버라이드합니다.
 
 ## 주의 사항
 

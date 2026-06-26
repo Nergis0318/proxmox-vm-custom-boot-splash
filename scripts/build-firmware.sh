@@ -10,10 +10,15 @@ BUILD_ROOT="${BUILD_ROOT:-/var/lib/pve-custom-boot-logo/build}"
 EDK2_WORK_DIR="${BUILD_ROOT}/edk2-work"
 PVE_FIRMWARE_DIR="/usr/share/pve-edk2-firmware"
 BACKUP_DIR="/var/lib/pve-custom-boot-logo/backups"
-GIT_URL="git://git.proxmox.com/git/pve-edk2-firmware.git"
+# Overridable so CI / containers can clone over https (git:// is often blocked).
+GIT_URL="${GIT_URL:-git://git.proxmox.com/git/pve-edk2-firmware.git}"
 
 # Only rebuild x64 OVMF CODE images (sufficient for typical Proxmox VMs).
 OVMF_ONLY="${OVMF_ONLY:-1}"
+
+# Skip apt dependency installation. Set to 1 when build deps are already present
+# (e.g. inside the docker/Dockerfile build-env image used by CI).
+SKIP_DEPS="${SKIP_DEPS:-0}"
 
 # Packages that must never be removed by our apt install on a live Proxmox node.
 PVE_PROTECTED_PKGS=(
@@ -91,6 +96,12 @@ fix_subhook_submodule() {
 }
 
 install_build_deps() {
+    if [[ "${SKIP_DEPS}" == "1" ]]; then
+        log "SKIP_DEPS=1: assuming build dependencies are preinstalled."
+        command -v qemu-img >/dev/null 2>&1 || die "qemu-img not found (install qemu-utils in the build image)."
+        return 0
+    fi
+
     log "Installing Proxmox-safe build dependencies..."
 
     # Safe on a live Proxmox node:

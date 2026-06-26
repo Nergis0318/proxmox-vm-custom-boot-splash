@@ -1,0 +1,12 @@
+# Normalize line endings: store LF in the repository.
+* text=auto
+
+# Shell scripts MUST be LF — CRLF breaks `set -euo pipefail` under bash
+# on Linux / inside the build container and CI.
+*.sh text eol=lf
+*.py text eol=lf
+
+# Binary assets — never normalize.
+*.png binary
+*.bmp binary
+*.fd binary
