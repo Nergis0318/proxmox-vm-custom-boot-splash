@@ -1,0 +1,87 @@
+name: Auto release on upstream version bump
+
+# Weekly check of the upstream Proxmox firmware repo. When its latest commit is a
+# "bump version to X" commit and no release exists yet for X, this creates a
+# GitHub Release tagged X (title "Auto Build - X", notes taken from the new
+# debian/changelog stanza) and dispatches build-firmware.yml on that tag so the
+# OVMF images get built and attached to the release.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1" # every Monday 06:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write # create the tag + release
+  actions: write # dispatch build-firmware.yml
+
+concurrency:
+  group: auto-release
+  cancel-in-progress: false
+
+jobs:
+  check-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Check upstream version and create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          # https is used because git:// is commonly blocked on CI runners,
+          # matching the GIT_URL override in scripts/build-firmware.sh.
+          UPSTREAM_URL: https://git.proxmox.com/git/pve-edk2-firmware.git
+        run: |
+          set -euo pipefail
+
+          # 1) Fetch only the latest upstream commit plus its parent (depth 2)
+          #    so the debian/changelog diff is available.
+          rm -rf upstream
+          git clone --depth 2 --no-tags "$UPSTREAM_URL" upstream
+
+          subject="$(git -C upstream log -1 --format=%s)"
+          echo "Latest upstream commit: ${subject}"
+
+          # 2) Only act on "bump version to X" commits; X becomes the version.
+          re='^bump version to (.+)$'
+          if [[ ! "$subject" =~ $re ]]; then
+            echo "Latest commit is not a version bump — nothing to do."
+            exit 0
+          fi
+          version="${BASH_REMATCH[1]}"
+          # Trim any stray surrounding whitespace.
+          version="$(echo -n "$version" | xargs)"
+          echo "Detected upstream version: ${version}"
+
+          # 3) Idempotency: skip if this version was already released.
+          if gh release view "$version" >/dev/null 2>&1; then
+            echo "Release ${version} already exists — skipping."
+            exit 0
+          fi
+
+          # 4) Release notes = lines added to debian/changelog in this commit
+          #    (the new stanza), with the leading '+' of the diff stripped.
+          notes="$(git -C upstream show --no-color --format= HEAD -- debian/changelog \
+            | grep '^+' | grep -v '^+++' | sed 's/^+//' || true)"
+          if [[ -z "${notes//[$'\n\r\t ']/}" ]]; then
+            echo "No changelog additions found — falling back to commit subject."
+            notes="$subject"
+          fi
+          printf '%s\n' "$notes" > release-notes.md
+          echo "----- release notes -----"
+          cat release-notes.md
+          echo "-------------------------"
+
+          # 5) Create the release. The tag points at this repo's checked-out
+          #    commit, which is what build-firmware will build from.
+          gh release create "$version" \
+            --title "Auto Build - ${version}" \
+            --notes-file release-notes.md \
+            --target "$GITHUB_SHA"
+          echo "Created release ${version}."
+
+          # 6) Dispatch the firmware build on the new tag. workflow_dispatch is
+          #    allowed with GITHUB_TOKEN, and running on a tag ref makes
+          #    build-firmware attach its artifacts to this release.
+          gh workflow run build-firmware.yml --ref "$version"
+          echo "Dispatched build-firmware on tag ${version}."
