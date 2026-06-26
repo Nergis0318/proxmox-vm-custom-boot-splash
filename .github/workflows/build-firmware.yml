@@ -86,6 +86,21 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # Rotate weekly so the cached firmware source stays reasonably current.
+      # Bump this expression (or clear caches) to force a fresh upstream clone.
+      - name: Compute weekly cache key
+        id: ck
+        run: echo "week=$(date -u +%Y%V)" >> "$GITHUB_OUTPUT"
+
+      # Cache the cloned pve-edk2-firmware checkout + its ~36 submodules (~1.8 GB).
+      # On a hit, build-firmware.sh sees the existing .git and skips the clone,
+      # the fetch/pull, and the submodule download entirely.
+      - name: Cache pve-edk2-firmware source + submodules
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/_build/pve-edk2-firmware
+          key: pve-edk2-fw-${{ steps.ck.outputs.week }}
+
       - name: Build OVMF CODE images with custom logo
         env:
           SKIP_DEPS: '1'      # deps are baked into the build-env image
