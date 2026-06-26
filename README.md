@@ -159,17 +159,23 @@ sudo ./scripts/apply-custom-boot-logo.sh ./logo.png --build
 3. Secure Boot VM이면 `OVMF_CODE_4M.secboot.fd` 포함 여부 확인
 4. `pve-edk2-firmware` 패키지 업데이트 후 재적용 필요할 수 있음
 
-### 빌드 의존성 오류 (`librbd-dev` 등)
+### 빌드 의존성 오류 / `proxmox-ve` 제거 경고
 
-이전 버전은 불필요한 QEMU 개발 패키지를 설치하려다 버전 충돌이 났습니다.  
-최신 `build-firmware.sh` 는 `debian/control` 기준 최소 패키지만 설치합니다.
+**절대 설치하면 안 되는 패키지 (라이브 Proxmox 노드):**
 
-그래도 실패하면:
+| 패키지 | 이유 |
+|--------|------|
+| `gcc-multilib` | `proxmox-ve`, `pve-qemu-kvm` 제거 유발 |
+| `qemu-utils` | `pve-qemu-kvm` 과 충돌 (`qemu-img`는 이미 설치됨) |
+
+최신 스크립트는 대신 `gcc-i686-linux-gnu`(32비트 크로스 컴파일러)를 사용하고, `apt` 설치 전 Proxmox 패키지 제거 여부를 검사합니다.
+
+수동 설치가 필요할 때:
 
 ```bash
 apt-get install -y git build-essential bc debhelper dosfstools \
-  iasl mtools nasm uuid-dev xorriso \
-  python3 python3-pexpect python3-virt-firmware qemu-utils gcc-multilib
+  acpica-tools mtools nasm uuid-dev xorriso \
+  python3 python3-pexpect python3-pil gcc-i686-linux-gnu
 ```
 
 ### 빌드 실패 (subhook submodule)

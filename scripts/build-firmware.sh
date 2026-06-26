@@ -14,6 +14,14 @@ GIT_URL="git://git.proxmox.com/git/pve-edk2-firmware.git"
 # Only rebuild x64 OVMF CODE images (sufficient for typical Proxmox VMs).
 OVMF_ONLY="${OVMF_ONLY:-1}"
 
+# Packages that must never be removed by our apt install on a live Proxmox node.
+PVE_PROTECTED_PKGS=(
+    proxmox-ve
+    pve-qemu-kvm
+    qemu-server
+    pve-manager
+)
+
 usage() {
     cat <<'EOF'
 Rebuild pve-edk2-firmware with a custom Logo.bmp and install the results.
@@ -23,11 +31,14 @@ Usage:
 
 Environment:
   BUILD_ROOT   Build working directory (default: /var/lib/pve-custom-boot-logo/build)
-  OVMF_ONLY    1 = build only x64 OVMF CODE images (default, fast)
-               0 = full package build (make deb, all architectures)
+  OVMF_ONLY    1 = build only x64 OVMF CODE images (default, Proxmox-safe)
+               0 = full package build (make deb, NOT recommended on live PVE node)
 
 By default only OVMF_CODE_4M.fd and OVMF_CODE_4M.secboot.fd are installed.
 VARS files (NVRAM) are not overwritten.
+
+IMPORTANT: Never install gcc-multilib or qemu-utils on a live Proxmox host —
+they can conflict with proxmox-ve / pve-qemu-kvm.
 EOF
 }
 
@@ -38,6 +49,33 @@ log() {
 die() {
     printf 'error: %s\n' "$*" >&2
     exit 1
+}
+
+apt_would_remove_proxmox() {
+    local simulate="$1"
+    local pkg
+    for pkg in "${PVE_PROTECTED_PKGS[@]}"; do
+        if echo "${simulate}" | grep -A30 "packages will be REMOVED" | grep -qi "${pkg}"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+safe_apt_install() {
+    local packages=("$@")
+    [[ "${#packages[@]}" -gt 0 ]] || return 0
+
+    local simulate
+    simulate="$(apt-get install --simulate -y "${packages[@]}" 2>&1)" || true
+
+    if apt_would_remove_proxmox "${simulate}"; then
+        log "apt simulate output:"
+        echo "${simulate}" | grep -E '^(The following|  )' || true
+        die "Refusing to install packages that would remove Proxmox components."
+    fi
+
+    apt-get install -y "${packages[@]}"
 }
 
 fix_subhook_submodule() {
@@ -52,37 +90,56 @@ fix_subhook_submodule() {
 }
 
 install_build_deps() {
-    log "Installing build dependencies (from pve-edk2-firmware debian/control)..."
+    log "Installing Proxmox-safe build dependencies..."
 
-    # Minimal set matching upstream Build-Depends — no QEMU *-dev packages.
+    # Safe on a live Proxmox node:
+    # - gcc-i686-linux-gnu instead of gcc-multilib (multilib removes proxmox-ve)
+    # - no qemu-utils (conflicts with pve-qemu-kvm; qemu-img already provided)
+    # - no python3-virt-firmware (only needed for VARS enrollment, which we skip)
     local packages=(
         git build-essential bc debhelper dosfstools
-        iasl mtools nasm uuid-dev xorriso
-        python3 python3-pexpect python3-virt-firmware
-        qemu-utils python3-pil
+        acpica-tools nasm uuid-dev mtools xorriso
+        python3 python3-pexpect python3-pil
+        gcc-i686-linux-gnu
     )
 
-    if [[ "${OVMF_ONLY}" == "1" ]]; then
-        # OvmfPkgIa32X64 needs 32-bit compiler support on amd64.
-        packages+=(gcc-multilib)
-    else
+    if [[ "${OVMF_ONLY}" != "1" ]]; then
         packages+=(
             gcc-aarch64-linux-gnu
             gcc-riscv64-linux-gnu
-            gcc-multilib
             devscripts
+            python3-virt-firmware
         )
+        if ! dpkg -s pve-qemu-kvm >/dev/null 2>&1; then
+            packages+=(qemu-utils)
+        fi
     fi
 
     apt-get update -qq
-    if ! apt-get install -y "${packages[@]}"; then
-        die "Failed to install build dependencies. See apt output above."
-    fi
+    safe_apt_install "${packages[@]}"
 
-    if ! dpkg -s pve-qemu-kvm >/dev/null 2>&1; then
-        log "pve-qemu-kvm not installed; installing qemu alternatives..."
-        apt-get install -y qemu-system-x86 qemu-system-arm || true
+    if ! command -v qemu-img >/dev/null 2>&1; then
+        die "qemu-img not found. Install pve-qemu-kvm before building."
     fi
+}
+
+setup_edk2_toolchain() {
+    # Ia32X64 firmware needs a 32-bit compiler on amd64 hosts.
+    export EDK2_TOOLCHAIN="${EDK2_TOOLCHAIN:-GCC5}"
+    export GCC5_IA32_PREFIX="${GCC5_IA32_PREFIX:-i686-linux-gnu-}"
+    log "Using IA32 cross prefix: ${GCC5_IA32_PREFIX}"
+}
+
+build_ovmf_code_only() {
+    local repo="${BUILD_ROOT}/pve-edk2-firmware"
+    cd "${repo}"
+    setup_edk2_toolchain
+
+    log "Building OVMF CODE images only (skipping VARS enrollment)..."
+    make debian/setup-build-stamp
+    make -j"$(nproc)" \
+        debian/ovmf-install/OVMF_CODE_4M.fd \
+        debian/ovmf-install/OVMF_CODE_4M.secboot.fd
 }
 
 install_built_code_images() {
@@ -128,8 +185,12 @@ main() {
     fi
     [[ -f "${logo_image}" ]] || die "Logo image not found: ${logo_image}"
 
+    if [[ "${OVMF_ONLY}" != "1" ]]; then
+        log "WARNING: OVMF_ONLY=0 can break a live Proxmox node. Prefer OVMF_ONLY=1."
+    fi
+
     command -v python3 >/dev/null || die "python3 is required"
-    python3 -c "from PIL import Image" 2>/dev/null || apt-get install -y python3-pil
+    python3 -c "from PIL import Image" 2>/dev/null || safe_apt_install python3-pil
 
     mkdir -p "${BUILD_ROOT}"
 
@@ -153,16 +214,15 @@ main() {
     local logo_bmp="${BUILD_ROOT}/Logo.bmp"
     python3 "${LIB_DIR}/prepare_logo.py" "$(readlink -f "${logo_image}")" "${logo_bmp}"
 
-    # debian/rules: cp debian/Logo.bmp MdeModulePkg/Logo/Logo.bmp
     cp "${logo_bmp}" "${BUILD_ROOT}/pve-edk2-firmware/debian/Logo.bmp"
     log "Installed logo at debian/Logo.bmp"
 
     if [[ "${OVMF_ONLY}" == "1" ]]; then
-        log "Building x64 OVMF only (OVMF_ONLY=1)..."
-        make build-ovmf
+        build_ovmf_code_only
         install_built_code_images
     else
         log "Building full pve-edk2-firmware package (OVMF_ONLY=0)..."
+        setup_edk2_toolchain
         make clean 2>/dev/null || true
         make -j"$(nproc)"
         make deb
