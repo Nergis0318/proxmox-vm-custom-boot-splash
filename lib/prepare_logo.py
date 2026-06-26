@@ -44,9 +44,7 @@ def convert_to_uefi_bmp(
 ) -> tuple[int, int]:
     """Convert *source* image to a bottom-up 24-bit BMP suitable for OVMF."""
     if Image is None:
-        raise RuntimeError(
-            "Pillow is required. Install with: pip install Pillow"
-        )
+        raise RuntimeError("Pillow is required. Install with: pip install Pillow")
 
     with Image.open(source) as img:
         img = img.convert("RGBA")

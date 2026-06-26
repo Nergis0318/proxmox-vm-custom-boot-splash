@@ -39,7 +39,9 @@ def _computed_bmp_size(width: int, height: int, bpp: int, pixel_offset: int) -> 
     return pixel_offset + _row_size(abs(width), bpp) * abs(height)
 
 
-def parse_bmp_at(data: bytes, offset: int, *, relaxed: bool = False) -> BmpRegion | None:
+def parse_bmp_at(
+    data: bytes, offset: int, *, relaxed: bool = False
+) -> BmpRegion | None:
     """Parse a BMP blob at *offset*; return None if invalid."""
     if offset + 54 > len(data) or data[offset : offset + 2] != b"BM":
         return None
@@ -209,7 +211,9 @@ def diagnose_firmware(firmware: Path) -> dict:
         "guid_hits": len(guid_hits),
         "decompressed_bmp_count": len(decompressed),
         "candidate_count": len(all_candidates),
-        "has_uefiextract": bool(shutil.which("uefiextract") or shutil.which("UEFIExtract")),
+        "has_uefiextract": bool(
+            shutil.which("uefiextract") or shutil.which("UEFIExtract")
+        ),
         "patchable": any(r.source == "raw" for r in all_candidates),
     }
 
@@ -315,7 +319,9 @@ def main() -> int:
     scan_parser = sub.add_parser("scan", help="List embedded BMP regions")
     scan_parser.add_argument("firmware", type=Path)
 
-    diagnose_parser = sub.add_parser("diagnose", help="Explain why logo detection fails")
+    diagnose_parser = sub.add_parser(
+        "diagnose", help="Explain why logo detection fails"
+    )
     diagnose_parser.add_argument("firmware", type=Path)
 
     args = parser.parse_args()
