@@ -3,6 +3,7 @@
 This repo patches Proxmox OVMF firmware to replace the UEFI boot logo. All production commands run **as root on a live Proxmox VE host** (not inside a guest VM or dev machine).
 
 ## Invocation (primary entrypoints)
+
 - Main tool: `sudo ./scripts/apply-custom-boot-logo.sh <logo.png> [options]`
   - `--vmid N` — patch only firmware used by that VM
   - `--files LIST` — comma-separated firmware filenames
@@ -16,6 +17,7 @@ This repo patches Proxmox OVMF firmware to replace the UEFI boot logo. All produ
 - Tests: `python3 tests/test_patch_firmware.py -v` (unittest, not pytest)
 
 ## Critical constraints (easy to miss)
+
 - Scripts enforce root and look for `/usr/share/pve-edk2-firmware` (fallback `/usr/share/kvm`).
 - Proxmox 8+: logos are LZMA-compressed inside UEFI volumes. `scan`/`diagnose` will show this; quick patch fails. Use `--build`/`--auto-build`.
 - Only patch `OVMF_CODE*.fd` files. `OVMF_VARS*.fd` are NVRAM only (no logo).
@@ -28,11 +30,13 @@ This repo patches Proxmox OVMF firmware to replace the UEFI boot logo. All produ
 - No repo-defined lint, typecheck, formatter, or `uv` commands. Use system tools if needed.
 
 ## Build / CI notes
+
 - `./scripts/build-firmware.sh <logo>` (called by apply script under `--build`).
 - Docker env: `docker/Dockerfile` (Debian 13/trixie base, ccache, cross-gcc).
 - CI: `.github/workflows/build-firmware.yml` (GHCR image + weekly source cache + ccache) and `auto-release.yml` (upstream version watcher).
 
 ## Quick gotchas
+
 - `diagnose` before assuming quick patch will work: `python3 lib/patch_firmware.py diagnose /usr/share/pve-edk2-firmware/OVMF_CODE_4M*.fd`
 - Restore: `sudo ./scripts/apply-custom-boot-logo.sh --restore`
 - Logo input can be PNG/JPG/BMP; converted to 24-bit BMP internally.
