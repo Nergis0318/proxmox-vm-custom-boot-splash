@@ -152,10 +152,10 @@ build_ovmf_code_only() {
 
     # Targets live in debian/rules, not the top-level Makefile (which only builds .deb).
     log "Building OVMF CODE images (make -f debian/rules)..."
+    # Build sequentially: both targets share Build/Ovmf3264 and race if run in parallel.
     make -f debian/rules debian/setup-build-stamp
-    make -f debian/rules -j"$(nproc)" \
-        debian/ovmf-install/OVMF_CODE_4M.fd \
-        debian/ovmf-install/OVMF_CODE_4M.secboot.fd
+    make -f debian/rules debian/ovmf-install/OVMF_CODE_4M.fd
+    make -f debian/rules debian/ovmf-install/OVMF_CODE_4M.secboot.fd
 }
 
 install_built_code_images() {
@@ -200,6 +200,7 @@ main() {
         exit 0
     fi
     [[ -f "${logo_image}" ]] || die "Logo image not found: ${logo_image}"
+    logo_image="$(readlink -f "${logo_image}")"
 
     if [[ "${OVMF_ONLY}" != "1" ]]; then
         log "WARNING: OVMF_ONLY=0 can break a live Proxmox node. Prefer OVMF_ONLY=1."
@@ -228,7 +229,7 @@ main() {
     git submodule update --init --recursive
 
     local logo_bmp="${BUILD_ROOT}/Logo.bmp"
-    python3 "${LIB_DIR}/prepare_logo.py" "$(readlink -f "${logo_image}")" "${logo_bmp}"
+    python3 "${LIB_DIR}/prepare_logo.py" "${logo_image}" "${logo_bmp}"
 
     cp "${logo_bmp}" "${BUILD_ROOT}/pve-edk2-firmware/debian/Logo.bmp"
     log "Installed logo at debian/Logo.bmp"
