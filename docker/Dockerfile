@@ -41,7 +41,15 @@ RUN apt-get update \
       python3-pil \
       gcc-i686-linux-gnu \
       qemu-utils \
+      ccache \
+ && update-ccache-symlinks \
  && rm -rf /var/lib/apt/lists/*
+
+# ccache masquerade symlinks live in /usr/lib/ccache (gcc, g++, i686-linux-gnu-gcc,
+# ...). Prepend that dir to PATH so EDK2's GCC5 toolchain transparently compiles
+# through ccache. update-ccache-symlinks (run above) creates the cross-compiler
+# symlink now that gcc-i686-linux-gnu is installed.
+ENV PATH="/usr/lib/ccache:${PATH}"
 
 WORKDIR /workspace
 

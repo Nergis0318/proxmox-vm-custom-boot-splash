@@ -83,6 +83,17 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     env:
       LOGO: ${{ github.event.inputs.logo || 'assets/logo.png' }}
+      # ccache speeds up the EDK2 C compilation across runs. The build-env image
+      # puts /usr/lib/ccache first on PATH, so gcc / i686-linux-gnu-gcc resolve to
+      # ccache masquerade symlinks transparently.
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_MAXSIZE: "500M"
+      # The build tree lives under a stable workspace path; BASEDIR lets ccache
+      # treat absolute paths as relative so hits survive across runs/runners.
+      CCACHE_BASEDIR: ${{ github.workspace }}
+      # OVMF embeds __DATE__/__TIME__ in a few objects; without this ccache would
+      # refuse to cache them. Accept slightly stale build timestamps for cache hits.
+      CCACHE_SLOPPINESS: time_macros
     steps:
       - uses: actions/checkout@v7
 
@@ -101,6 +112,23 @@ jobs:
           path: ${{ github.workspace }}/_build/pve-edk2-firmware
           key: pve-edk2-fw-${{ steps.ck.outputs.week }}
 
+      # Persist the ccache directory across runs. A unique key per run always saves
+      # the freshly updated cache; restore-keys pull the most recent prior cache so
+      # the next build reuses previously compiled object hashes.
+      - name: Cache ccache (EDK2 compile cache)
+        uses: actions/cache@v6
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ccache-${{ steps.ck.outputs.week }}-${{ github.run_id }}
+          restore-keys: |
+            ccache-${{ steps.ck.outputs.week }}-
+            ccache-
+
+      # The build-env image already prepends /usr/lib/ccache, but assert it here so
+      # ccache wins on PATH for every step regardless of runner PATH ordering.
+      - name: Put ccache first on PATH
+        run: echo "/usr/lib/ccache" >> "$GITHUB_PATH"
+
       - name: Build OVMF CODE images with custom logo
         env:
           SKIP_DEPS: "1" # deps are baked into the build-env image
@@ -109,6 +137,11 @@ jobs:
           GIT_DEPTH: "1" # shallow clone repo + submodules (much faster)
           BUILD_ROOT: ${{ github.workspace }}/_build
         run: bash scripts/build-firmware.sh "$LOGO"
+
+      # Surface hit/miss ratio so cache effectiveness is visible in the run log.
+      - name: ccache statistics
+        if: always()
+        run: ccache -s
 
       - name: Collect artifacts
         run: |
