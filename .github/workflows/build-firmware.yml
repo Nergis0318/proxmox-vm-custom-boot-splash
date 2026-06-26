@@ -91,6 +91,7 @@ jobs:
           SKIP_DEPS: '1'      # deps are baked into the build-env image
           OVMF_ONLY: '1'      # x64 OVMF_CODE_4M(.secboot).fd only
           GIT_URL: https://git.proxmox.com/git/pve-edk2-firmware.git
+          GIT_DEPTH: '1'      # shallow clone repo + submodules (much faster)
           BUILD_ROOT: ${{ github.workspace }}/_build
         run: bash scripts/build-firmware.sh "$LOGO"
 
@@ -104,7 +105,7 @@ jobs:
           ( cd dist && sha256sum ./*.fd | tee SHA256SUMS )
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ovmf-custom-logo
           path: dist/
@@ -112,7 +113,7 @@ jobs:
 
       - name: Attach to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             dist/OVMF_CODE_4M.fd

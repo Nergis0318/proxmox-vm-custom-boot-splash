@@ -246,6 +246,7 @@ docker build -t pve-ovmf-build-env ./docker
 docker run --rm -v "$PWD:/workspace" \
   -e SKIP_DEPS=1 \
   -e GIT_URL=https://git.proxmox.com/git/pve-edk2-firmware.git \
+  -e GIT_DEPTH=1 \
   -e BUILD_ROOT=/workspace/_build \
   pve-ovmf-build-env \
   bash scripts/build-firmware.sh assets/logo.png

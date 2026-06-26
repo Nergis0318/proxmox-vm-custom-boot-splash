@@ -20,6 +20,14 @@ OVMF_ONLY="${OVMF_ONLY:-1}"
 # (e.g. inside the docker/Dockerfile build-env image used by CI).
 SKIP_DEPS="${SKIP_DEPS:-0}"
 
+# Shallow-clone depth for the firmware repo and its (many) submodules. Set to 1
+# to fetch only the pinned tip — dramatically faster, no history. Empty = full.
+GIT_DEPTH="${GIT_DEPTH:-}"
+
+# Parallel submodule fetch jobs. edk2 pulls dozens of nested submodules
+# (openssl, libspdm, mbedtls, ...); cloning them in parallel is the biggest win.
+GIT_JOBS="${GIT_JOBS:-$(nproc 2>/dev/null || echo 4)}"
+
 # Packages that must never be removed by our apt install on a live Proxmox node.
 PVE_PROTECTED_PKGS=(
     proxmox-ve
@@ -222,22 +230,29 @@ main() {
 
     mkdir -p "${BUILD_ROOT}"
 
+    local just_cloned=0
     if [[ ! -d "${BUILD_ROOT}/pve-edk2-firmware/.git" ]]; then
-        log "Cloning ${GIT_URL}..."
-        git clone "${GIT_URL}" "${BUILD_ROOT}/pve-edk2-firmware"
+        log "Cloning ${GIT_URL}${GIT_DEPTH:+ (shallow, depth=${GIT_DEPTH})}..."
+        git clone ${GIT_DEPTH:+--depth "${GIT_DEPTH}"} \
+            "${GIT_URL}" "${BUILD_ROOT}/pve-edk2-firmware"
+        just_cloned=1
     fi
 
     install_build_deps
 
     cd "${BUILD_ROOT}/pve-edk2-firmware"
-    git fetch --all --tags
-    git pull --ff-only || true
+    # A fresh clone is already at the tip; only refresh an existing full checkout
+    # (refreshing a shallow clone would defeat the point).
+    if [[ "${just_cloned}" -eq 0 && -z "${GIT_DEPTH}" ]]; then
+        git fetch --all --tags
+        git pull --ff-only || true
+    fi
 
     fix_subhook_submodule
 
-    log "Updating submodules (this may take a few minutes)..."
+    log "Updating submodules (${GIT_JOBS} parallel jobs${GIT_DEPTH:+, shallow depth=${GIT_DEPTH}})..."
     git submodule sync --recursive
-    git submodule update --init --recursive
+    git submodule update --init --recursive --jobs "${GIT_JOBS}" ${GIT_DEPTH:+--depth "${GIT_DEPTH}"}
 
     local logo_bmp="${BUILD_ROOT}/Logo.bmp"
     python3 "${LIB_DIR}/prepare_logo.py" "${logo_image}" "${logo_bmp}"
