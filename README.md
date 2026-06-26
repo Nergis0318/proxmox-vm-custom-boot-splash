@@ -53,13 +53,20 @@ sudo ./scripts/apply-custom-boot-logo.sh ./logo.png
 
 ### 2) Source Build (소스 빌드) — Proxmox 8+ 권장
 
-`pve-edk2-firmware` 소스를 클론해 `debian/Logo.bmp` 를 교체한 뒤 펌웨어를 재빌드·설치합니다.
+`pve-edk2-firmware` 소스를 클론해 `debian/Logo.bmp` 를 교체한 뒤 **x64 OVMF CODE 이미지만** 재빌드·설치합니다.
 
 - 장점: 압축된 펌웨어에서도 확실히 적용, 로고 크기 자유
-- 단점: 빌드에 10~30분 소요, 디스크·빌드 의존성 필요
+- 단점: 첫 빌드에 10~30분 소요 (서브모듈 다운로드 포함)
+- 기본값(`OVMF_ONLY=1`): `OVMF_CODE_4M.fd`, `OVMF_CODE_4M.secboot.fd` 만 교체 (VARS/NVRAM 미변경)
 
 ```bash
 sudo ./scripts/apply-custom-boot-logo.sh ./logo.png --build
+```
+
+전체 아키텍처 패키지를 빌드하려면:
+
+```bash
+sudo OVMF_ONLY=0 ./scripts/apply-custom-boot-logo.sh ./logo.png --build
 ```
 
 ## 사용 예시
@@ -151,6 +158,19 @@ sudo ./scripts/apply-custom-boot-logo.sh ./logo.png --build
 2. `detect-vm-firmware.sh <vmid>` 로 올바른 CODE 파일을 패치했는지 확인
 3. Secure Boot VM이면 `OVMF_CODE_4M.secboot.fd` 포함 여부 확인
 4. `pve-edk2-firmware` 패키지 업데이트 후 재적용 필요할 수 있음
+
+### 빌드 의존성 오류 (`librbd-dev` 등)
+
+이전 버전은 불필요한 QEMU 개발 패키지를 설치하려다 버전 충돌이 났습니다.  
+최신 `build-firmware.sh` 는 `debian/control` 기준 최소 패키지만 설치합니다.
+
+그래도 실패하면:
+
+```bash
+apt-get install -y git build-essential bc debhelper dosfstools \
+  iasl mtools nasm uuid-dev xorriso \
+  python3 python3-pexpect python3-virt-firmware qemu-utils gcc-multilib
+```
 
 ### 빌드 실패 (subhook submodule)
 
