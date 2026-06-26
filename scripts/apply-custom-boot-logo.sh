@@ -15,7 +15,6 @@ WORK_DIR="/var/lib/pve-custom-boot-logo/work"
 DEFAULT_FIRMWARE_FILES=(
     "OVMF_CODE_4M.fd"
     "OVMF_CODE_4M.secboot.fd"
-    "OVMF_CODE_4M.ms.fd"
     "OVMF_CODE-pure-efi.fd"
     "OVMF_CODE.fd"
 )
@@ -35,6 +34,7 @@ Options:
   --files LIST         Comma-separated firmware filenames to patch
   --vmid ID            Patch only firmware files used by this VM
   --build              Rebuild firmware from pve-edk2-firmware source
+  --auto-build         Fall back to --build when quick patch is impossible
   --dry-run            Show actions without modifying firmware
   --restore            Restore firmware from backups
   -h, --help           Show this help
@@ -107,7 +107,7 @@ firmware_for_vmid() {
 
     local files=()
     if [[ "${eficode}" == *"pre-enrolled-keys=1"* ]] || [[ "${machine}" == *"q35"* && "${eficode}" == *"efitype=4m"* ]]; then
-        files+=("OVMF_CODE_4M.secboot.fd" "OVMF_CODE_4M.ms.fd")
+        files+=("OVMF_CODE_4M.secboot.fd")
     fi
     files+=("OVMF_CODE_4M.fd" "OVMF_CODE-pure-efi.fd" "OVMF_CODE.fd")
 
@@ -143,12 +143,11 @@ restore_firmware() {
 
 patch_one_firmware() {
     local firmware_path="$1"
-    local logo_bmp="$2"
-    local dry_run="$3"
+    local dry_run="$2"
 
     [[ -f "${firmware_path}" ]] || {
         log "Skip missing firmware: ${firmware_path}"
-        return 0
+        return 1
     }
 
     local name
@@ -175,10 +174,16 @@ patch_one_firmware() {
         return 0
     fi
 
+    if ! python3 "${LIB_DIR}/patch_firmware.py" diagnose "${firmware_path}"; then
+        log "Quick patch not possible for ${firmware_path}"
+        return 2
+    fi
+
     python3 "${LIB_DIR}/patch_firmware.py" extract "${firmware_path}" "${extracted}"
     python3 "${LIB_DIR}/prepare_logo.py" "${LOGO_IMAGE}" "${prepared}" --match "${extracted}"
     python3 "${LIB_DIR}/patch_firmware.py" patch "${firmware_path}" "${prepared}"
     log "Patched ${firmware_path}"
+    return 0
 }
 
 main() {
@@ -188,6 +193,7 @@ main() {
     local vmid=""
     local mode="patch"
     local dry_run="0"
+    local auto_build="0"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -201,6 +207,10 @@ main() {
                 ;;
             --build)
                 mode="build"
+                shift
+                ;;
+            --auto-build)
+                auto_build="1"
                 shift
                 ;;
             --dry-run)
@@ -264,7 +274,9 @@ main() {
     log "Firmware dir: ${FIRMWARE_DIR}"
     log "Logo image:   ${LOGO_IMAGE}"
 
-    local patched=0
+    local attempted=0
+    local succeeded=0
+    local needs_build=0
     for name in "${files[@]}"; do
         name="$(echo "${name}" | xargs)"
         [[ -n "${name}" ]] || continue
@@ -272,18 +284,38 @@ main() {
         if [[ ! -f "${path}" && -f "${KVM_FIRMWARE_DIR}/${name}" ]]; then
             path="${KVM_FIRMWARE_DIR}/${name}"
         fi
-        patch_one_firmware "${path}" "${LOGO_IMAGE}" "${dry_run}"
-        patched=$((patched + 1))
+        attempted=$((attempted + 1))
+        if patch_one_firmware "${path}" "${dry_run}"; then
+            succeeded=$((succeeded + 1))
+        else
+            local rc=$?
+            if [[ "${rc}" -eq 2 ]]; then
+                needs_build=1
+            fi
+        fi
     done
 
-    [[ "${patched}" -gt 0 ]] || die "No firmware files were processed"
+    [[ "${attempted}" -gt 0 ]] || die "No firmware files were processed"
 
     if [[ "${dry_run}" == "1" ]]; then
         log "Dry run complete."
-    else
-        log "Success. Stop/start VMs to display the new boot logo."
-        log "Restore originals with: sudo ${SCRIPT_DIR}/apply-custom-boot-logo.sh --restore"
+        exit 0
     fi
+
+    if [[ "${succeeded}" -gt 0 ]]; then
+        log "Patched ${succeeded}/${attempted} firmware file(s)."
+        log "Stop/start VMs to display the new boot logo."
+        log "Restore originals with: sudo ${SCRIPT_DIR}/apply-custom-boot-logo.sh --restore"
+        exit 0
+    fi
+
+    log "Quick patch failed on all firmware files."
+    if [[ "${needs_build}" -eq 1 || "${auto_build}" == "1" ]]; then
+        log "Falling back to pve-edk2-firmware source build..."
+        exec "${SCRIPT_DIR}/build-firmware.sh" "${LOGO_IMAGE}"
+    fi
+
+    die "Logo is LZMA-compressed in modern Proxmox firmware. Re-run with --build or --auto-build."
 }
 
 main "$@"

@@ -101,18 +101,9 @@ main() {
     local logo_bmp="${BUILD_ROOT}/Logo.bmp"
     python3 "${LIB_DIR}/prepare_logo.py" "$(readlink -f "${logo_image}")" "${logo_bmp}"
 
-    local logo_targets=(
-        "edk2/MdeModulePkg/Logo/Logo.bmp"
-        "OvmfPkg/Logo.bmp"
-    )
-    for target in "${logo_targets[@]}"; do
-        if [[ -f "${BUILD_ROOT}/pve-edk2-firmware/${target}" || -d "$(dirname "${BUILD_ROOT}/pve-edk2-firmware/${target}")" ]]; then
-            cp "${logo_bmp}" "${BUILD_ROOT}/pve-edk2-firmware/${target}"
-            log "Installed logo at ${target}"
-        fi
-    done
-    cp "${logo_bmp}" "${BUILD_ROOT}/pve-edk2-firmware/debian/Logo.bmp" 2>/dev/null || \
-        cp "${logo_bmp}" "${BUILD_ROOT}/pve-edk2-firmware/Logo.bmp"
+    # debian/rules copies debian/Logo.bmp -> MdeModulePkg/Logo/Logo.bmp at build time.
+    cp "${logo_bmp}" "${BUILD_ROOT}/pve-edk2-firmware/debian/Logo.bmp"
+    log "Installed logo at debian/Logo.bmp"
 
     log "Building firmware (this may take a while)..."
     make clean 2>/dev/null || true

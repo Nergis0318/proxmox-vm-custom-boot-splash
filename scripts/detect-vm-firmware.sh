@@ -43,8 +43,7 @@ detect_vmid() {
 
     echo "Likely firmware CODE files to patch:"
     if [[ "${eficode}" == *"pre-enrolled-keys=1"* ]]; then
-        echo "  - OVMF_CODE_4M.secboot.fd   (Secure Boot, pre-enrolled keys)"
-        echo "  - OVMF_CODE_4M.ms.fd        (Microsoft Secure Boot variant)"
+        echo "  - OVMF_CODE_4M.secboot.fd   (Secure Boot + pre-enrolled keys)"
     fi
     if [[ "${eficode}" == *"efitype=4m"* ]] || [[ "${eficode}" == *"4m"* ]]; then
         echo "  - OVMF_CODE_4M.fd"
