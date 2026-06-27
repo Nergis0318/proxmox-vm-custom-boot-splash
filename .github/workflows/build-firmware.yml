@@ -6,7 +6,6 @@ name: Build firmware
 
 on:
   push:
-    branches: [main]
     tags: ["v*"]
   workflow_dispatch:
     inputs:
