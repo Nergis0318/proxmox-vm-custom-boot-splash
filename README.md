@@ -7,9 +7,7 @@ Proxmox VE의 UEFI(OVMF) VM을 켤 때 나오는 부팅 로고(검은 화면 중
 이 저장소를 **포크 → 내 로고 이미지 1장 교체 → GitHub Actions가 자동 빌드 → Proxmox 호스트에서 한 줄 설치**, 이 흐름이 핵심입니다. 호스트에서 직접 컴파일(10~30분)할 필요가 없습니다.
 
 ```text
-포크 → assets/logo.png 교체 → 태그 푸시(Actions 빌드) → Release 생성
-                                                          │
-        Proxmox 호스트:  install-from-release.sh  ◄───────┘  → VM 중지·시작
+포크 → assets/logo.png 교체 → 태그 푸시(Actions 빌드) → Release 생성 → Proxmox 호스트:  install-from-release.sh → VM 중지·시작
 ```
 
 > 빌드는 GitHub의 깨끗한 컨테이너에서 일어나므로 Proxmox 호스트의 `proxmox-ve` / `pve-qemu-kvm` 패키지를 전혀 건드리지 않습니다.
@@ -45,7 +43,7 @@ git push
 - **배경:** 투명 PNG는 **검은 배경** 위에 합성됨 (부트 화면이 검정)
 - **색상:** 어두운 배경에서 잘 보이는 밝은 색 권장
 
-### 3단계. GitHub Actions로 빌드 → Release 생성
+### 3단계. Release 생성 → GitHub Actions로 빌드
 
 포크에는 빌드 워크플로([`.github/workflows/build-firmware.yml`](.github/workflows/build-firmware.yml))가 함께 복사되어 있습니다.
 
