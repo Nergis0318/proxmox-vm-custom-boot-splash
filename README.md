@@ -2,6 +2,8 @@
 
 Proxmox VE의 UEFI(OVMF) VM을 켤 때 나오는 부팅 로고(검은 화면 중앙의 TianoCore / Proxmox 로고)를 **내 로고로 바꿔주는** 도구입니다.
 
+<img width="1599" height="711" alt="image" src="https://github.com/user-attachments/assets/c776ab38-eb2b-4a61-9257-b102736139ec" />
+
 이 저장소를 **포크 → 내 로고 이미지 1장 교체 → GitHub Actions가 자동 빌드 → Proxmox 호스트에서 한 줄 설치**, 이 흐름이 핵심입니다. 호스트에서 직접 컴파일(10~30분)할 필요가 없습니다.
 
 ```text
