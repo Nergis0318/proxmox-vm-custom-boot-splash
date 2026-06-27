@@ -30,8 +30,10 @@ on the host are overwritten (after a one-time backup).
 
 Options:
   --version TAG        Install a specific Release tag (default: latest)
-  --repo OWNER/NAME    Source repo (default: Nergis0318/proxmox-vm-custom-boot-splash;
-                       env GITHUB_REPO is also honoured)
+  --repo OWNER/NAME    Source repo. Default: this checkout's git origin (so a
+                       clone of your fork targets your own Releases), else
+                       Nergis0318/proxmox-vm-custom-boot-splash. Env GITHUB_REPO
+                       is honoured between --repo and git origin.
   --firmware-dir DIR   Firmware directory (default: auto-detect)
   --dry-run            Download + verify only; do not install
   --no-verify          Skip SHA256 checksum verification (escape hatch)
@@ -77,6 +79,27 @@ download() {
     fi
 }
 
+# Derive "owner/repo" from this checkout's origin remote so a clone of your fork
+# downloads from your fork's Releases without needing --repo. Prints nothing and
+# returns non-zero when it cannot be determined.
+detect_repo_from_git() {
+    command -v git >/dev/null 2>&1 || return 1
+    local url
+    url="$(git -C "${SCRIPT_DIR}" remote get-url origin 2>/dev/null)" || return 1
+    [[ -n "${url}" ]] || return 1
+    url="${url%.git}"
+    case "${url}" in
+        *github.com*) ;;
+        *) return 1 ;;
+    esac
+    # Strip everything up to and including github.com, then a leading : or /,
+    # which normalises both https://github.com/owner/repo and git@github.com:owner/repo.
+    url="${url#*github.com}"
+    url="${url#[:/]}"
+    [[ "${url}" == */* ]] || return 1
+    printf '%s\n' "${url}"
+}
+
 detect_firmware_dir() {
     if [[ -d "${PVE_FIRMWARE_DIR}" ]]; then
         echo "${PVE_FIRMWARE_DIR}"
@@ -91,7 +114,7 @@ detect_firmware_dir() {
 
 main() {
     local version=""
-    local repo="${GITHUB_REPO:-${DEFAULT_REPO}}"
+    local repo=""
     local firmware_dir=""
     local dry_run="0"
     local verify="1"
@@ -130,6 +153,18 @@ main() {
                 ;;
         esac
     done
+
+    # Repo resolution order: --repo > $GITHUB_REPO > this checkout's git origin
+    # (so a clone of your fork targets your fork's Releases) > built-in default.
+    if [[ -z "${repo}" ]]; then
+        repo="${GITHUB_REPO:-}"
+    fi
+    if [[ -z "${repo}" ]]; then
+        repo="$(detect_repo_from_git || true)"
+    fi
+    if [[ -z "${repo}" ]]; then
+        repo="${DEFAULT_REPO}"
+    fi
 
     # Installing writes to the firmware dir and so needs root; --dry-run only
     # downloads to a temp dir, which lets it run off-host for testing.

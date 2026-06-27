@@ -10,6 +10,8 @@ This repo patches Proxmox OVMF firmware to replace the UEFI boot logo. All produ
   - `--build` — force source rebuild of pve-edk2-firmware
   - `--auto-build` — fall back to `--build` if quick patch fails
   - `--dry-run`, `--restore`, `--firmware-dir DIR`
+- Install pre-built firmware from a GitHub Release: `sudo ./scripts/install-from-release.sh [--version TAG] [--dry-run]`
+  - Downloads `OVMF_CODE_4M(.secboot).fd` + `SHA256SUMS` from Releases, verifies, and overwrites only firmware files already present on the host (one-time backup). Fast alternative to `--build`. No `gh`/`jq`; just `curl`/`wget`. Restore via `apply-custom-boot-logo.sh --restore`.
 - Detect VM firmware: `./scripts/detect-vm-firmware.sh <vmid>` (or `--list-installed`)
 - Low-level Python:
   - `python3 lib/patch_firmware.py {scan,extract,patch,diagnose} <firmware> ...`
