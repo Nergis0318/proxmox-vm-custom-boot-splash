@@ -138,6 +138,55 @@ sudo ./scripts/apply-custom-boot-logo.sh ./my-logo.png --auto-build
 
 자세한 옵션은 `sudo ./scripts/apply-custom-boot-logo.sh --help` 와 [AGENTS.md](AGENTS.md) 를 참고하세요.
 
+---
+
+## 대안: 로컬 도커로 빌드 (Actions 없이)
+
+GitHub Actions를 쓰지 않고 **내 PC에서 도커로 직접** `.fd` 를 뽑을 수도 있습니다. Actions가 하는 일과 동일한 빌드를 로컬에서 재현하는 경로로, 빌드 파이프라인을 디버깅하거나 GitHub 없이 결과물이 필요할 때 유용합니다.
+
+> 전제: **Docker가 Linux 컨테이너 모드**로 실행 중이어야 합니다(이미지가 `debian:trixie-slim` 기반).
+
+### 1단계. 빌드 환경 이미지 만들기
+
+[`docker/Dockerfile`](docker/Dockerfile) 은 EDK2 빌드 의존성만 구워둔 이미지입니다. 소스는 들어가지 않고 실행 시 마운트합니다.
+
+```bash
+docker build -t pve-build-env docker
+```
+
+### 2단계. 컨테이너 안에서 펌웨어 빌드
+
+저장소 루트에서 실행합니다.
+
+```bash
+docker run --rm -v "$PWD:/workspace" \
+  -e SKIP_DEPS=1 -e OVMF_ONLY=1 \
+  -e GIT_URL=https://git.proxmox.com/git/pve-edk2-firmware.git \
+  -e GIT_DEPTH=1 -e BUILD_ROOT=/workspace/_build \
+  pve-build-env bash scripts/build-firmware.sh assets/logo.png
+```
+
+> Windows PowerShell에서는 `$PWD` 를 `${PWD}` 로, 줄 끝 `\` 를 백틱(`` ` ``)으로 바꾸세요.
+
+주요 환경변수(Actions의 [`build-firmware.yml`](.github/workflows/build-firmware.yml) 과 동일):
+
+- `SKIP_DEPS=1` — 의존성은 이미지에 구워져 있으므로 apt 설치 생략
+- `OVMF_ONLY=1` — x64 `OVMF_CODE_4M(.secboot).fd` 만 빌드
+- `GIT_URL=https://…` — `git://` 이 막힌 환경이 많아 https 로 클론
+- `GIT_DEPTH=1` — 펌웨어 소스 + 서브모듈을 얕게 클론(빠름)
+- `BUILD_ROOT=/workspace/_build` — **마운트된 경로**로 지정해야 결과물이 호스트에 남음(기본값은 컨테이너 내부라 `--rm` 시 사라짐)
+
+### 결과물 위치
+
+```text
+_build/edk2-work/debian/ovmf-install/OVMF_CODE_4M.fd
+_build/edk2-work/debian/ovmf-install/OVMF_CODE_4M.secboot.fd
+```
+
+이 `.fd` 파일을 Proxmox 호스트의 `/usr/share/pve-edk2-firmware/` 로 (원본 백업 후) 복사해 적용합니다. **호스트의 PVE/Debian 버전과 맞아야** 합니다. 로고만 바꿔 다시 빌드하려면 `assets/logo.png` 를 교체하고 2단계만 다시 실행하면 되고, `_build` 디렉터리를 그대로 두면 다음 빌드부터 클론을 재사용해 빨라집니다.
+
+> 첫 빌드는 pve-edk2-firmware + 서브모듈(~1.8 GB) 클론과 EDK2 컴파일로 **10~30분 이상** 걸릴 수 있습니다.
+
 ## 문제 해결
 
 ### 포크에서 Actions가 안 돌아요
