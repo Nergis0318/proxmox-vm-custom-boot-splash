@@ -185,7 +185,7 @@ _build/edk2-work/debian/ovmf-install/OVMF_CODE_4M.secboot.fd
 
 이 `.fd` 파일을 Proxmox 호스트의 `/usr/share/pve-edk2-firmware/` 로 (원본 백업 후) 복사해 적용합니다. **호스트의 PVE/Debian 버전과 맞아야** 합니다. 로고만 바꿔 다시 빌드하려면 `assets/logo.png` 를 교체하고 2단계만 다시 실행하면 되고, `_build` 디렉터리를 그대로 두면 다음 빌드부터 클론을 재사용해 빨라집니다.
 
-> 첫 빌드는 pve-edk2-firmware + 서브모듈(~1.8 GB) 클론과 EDK2 컴파일로 **10~30분 이상** 걸릴 수 있습니다.
+> 첫 빌드는 pve-edk2-firmware + 서브모듈(~1.8 GB) 클론과 EDK2 컴파일로 **10\~30분 이상** 걸릴 수 있습니다.
 
 ## 문제 해결
 
